@@ -1,0 +1,16 @@
+useDynLib(csea, .registration=TRUE)
+exportPattern("^[[:alpha:]]+")
+
+importFrom(Rcpp, evalCpp)
+importFrom(MASS, ginv)
+importFrom(parallel, makeCluster)
+importFrom(parallel, stopCluster)
+importFrom(parallel, detectCores)
+importFrom(doSNOW, registerDoSNOW)
+importFrom(foreach, "%dopar%")
+importFrom(foreach, foreach)
+importFrom(twosamples, ks_stat)
+importFrom(twosamples, cvm_stat)
+importFrom(twosamples, ad_stat)
+importFrom(twosamples, dts_stat)
+
