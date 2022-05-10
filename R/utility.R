@@ -25,7 +25,11 @@ combine_lfcmodel_sample <- function(results, r) {
 combine_csea_lfcmodel <- function(results, r) {
 	results$shuffled_scores <- cbind(results$shuffled_scores,
 					 r$shuffled_scores)
-	results$obs_scores <- cbind(results$obs_scores, r$obs_scores)
+	if (length(r$obs_scores) == 1) {
+		results$obs_scores <- c(results$obs_scores, r$obs_scores)
+	} else {
+		results$obs_scores <- cbind(results$obs_scores, r$obs_scores)
+	}
 	results
 }
 

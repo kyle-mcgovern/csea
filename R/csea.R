@@ -33,7 +33,13 @@ csea <- function(object, entity_set, perm_type, statistic, power=1, iterations=2
 		}
 		res$p_value <- sum(res$obs_scores <= res$shuffled_scores) / length(res$shuffled_scores)
 	} else if(is.vector(object) & !is.list(object)) {
-		; # TODO Implement
+		res$obs_scores <- csea_base(object, entity_set, statistic, power)
+		for(i in 1:iterations) {
+			shuffled_set <- sample(1:length(object), length(entity_set), replace=F)
+			res$shuffled_scores <- c(res$shuffled_scores, csea_base(object, shuffled_set, statistic, power))
+		}
+		res$p_value <- sum(res$obs_scores <= res$shuffled_scores) / length(res$shuffled_scores)
+
 	} else {
 		stop("object must be seainput or vector")
 	}
@@ -83,12 +89,21 @@ csea_parallel <- function(object, entity_sets, perm_type, statistic, cores=detec
 			obs_scores <- c()
 			shuffled_scores <- c()
 			for(i in 1:length(entity_sets)) {
-				obs_scores <- c(obs_scores, csea_base(ms$obs_lfc, entity_sets[[i]], statistic, power))
-				shuffled_scores <- c(shuffled_scores, csea_base(ms$shuffled_lfc, entity_sets[[i]], statistic, power))
+				if(perm_type=="column") {
+					obs_scores <- c(obs_scores, csea_base(ms$obs_lfc, entity_sets[[i]], statistic, power))
+					shuffled_scores <- c(shuffled_scores, csea_base(ms$shuffled_lfc, entity_sets[[i]], statistic, power))
+				} else {
+					obs_scores <- c(obs_scores, csea_base(ms$obs_lfc, entity_sets[[i]], statistic, power))
+					shuffled_set <- sample(1:length(ms$obs_lfc), length(entity_sets[[i]]), replace=F)
+					shuffled_scores <- c(shuffled_scores, csea_base(ms$obs_lfc, shuffled_set, statistic, power))
+				}
+
 			}
 			list(shuffled_scores=shuffled_scores, obs_scores=obs_scores)
 		}
 		res <- csea_lfcmodel_agg(output, names(entity_sets))
+	} else {
+		stop("object must be of class seainput or lfcmodel")
 	}
 
 	close(pbd$pb)
