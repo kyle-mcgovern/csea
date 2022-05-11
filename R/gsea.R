@@ -1,31 +1,34 @@
-gsea <- function(scores, inds, iters=2000) {
+gsea_base <- function(scores, inds) {
 	sorted_obj <- sort(scores, decreasing=T, index.return=T)
 	inds <- which(sorted_obj$ix%in%inds)
 	inds <- sort(inds) 
 	scores <- sorted_obj$x
 	num_gt <- 0
 	hit_scores <- abs(scores[inds])/sum(abs(scores[inds])) 
-	obs_score <- gsea_score_C(hit_scores, inds, length(scores)) 
-	found <- 0
-	for(i in 1:iters) {
-		random_inds <- sample(1:length(scores), length(inds), replace=F)
-		random_inds <- sort(random_inds) 
-		hit_scores <- abs(scores[inds])/sum(abs(scores[inds])) 
-		rand_score <- gsea_score_C(hit_scores, random_inds, length(scores)) 
-		if (obs_score < 0 & rand_score > 0) {
-			next
-		} else if (obs_score > 0 & rand_score < 0) {
-			next
-		} else {
-			found <- found + 1
+	return(gsea_score_C(hit_scores, inds, length(scores)) )
+}
+
+gsea <- function(object, entity_sets, iterations=2000, cores=detectCores()) {
+	cl <- makeCluster(cores)
+	registerDoSNOW(cl)
+	pbd <- build_txt_pb_opts(iterations)
+	output <- foreach(i=1:iterations, .options.snow=pbd$opts, .export=c("gsea_base"),
+		       .combine=combine_csea_lfcmodel) %dopar% {
+		# Take sample from model
+		ms <- model_sample(object, "column") # FIXME
+		# Run through all gene sets
+		obs_scores <- c()
+		shuffled_scores <- c()
+		for(j in 1:length(entity_sets)) {
+			obs_scores <- c(obs_scores, gsea_base(ms$obs_lfc, entity_sets[[j]]))
+			shuffled_scores <- c(shuffled_scores, gsea_base(ms$shuffled_lfc, entity_sets[[j]]))
 		}
-		if (abs(rand_score) >= abs(obs_score)) {
-			num_gt <- num_gt + 1
-		}
+		list(shuffled_scores=shuffled_scores, obs_scores=obs_scores)
 	}
-	pval <- num_gt/found
-	if(is.na(pval)) { # Only occurs if found and num_gt are 0
-		pval <- 0
-	}
-	return(list(obs_stat=obs_score, pval=pval))
+	res <- csea_lfcmodel_agg(output, names(entity_sets))
+	close(pbd$pb)
+	stopCluster(cl)
+	gc()
+	res
+
 }

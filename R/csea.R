@@ -88,13 +88,13 @@ csea_parallel <- function(object, entity_sets, perm_type, statistic, cores=detec
 			# Run through all gene sets
 			obs_scores <- c()
 			shuffled_scores <- c()
-			for(i in 1:length(entity_sets)) {
+			for(j in 1:length(entity_sets)) {
 				if(perm_type=="column") {
-					obs_scores <- c(obs_scores, csea_base(ms$obs_lfc, entity_sets[[i]], statistic, power))
-					shuffled_scores <- c(shuffled_scores, csea_base(ms$shuffled_lfc, entity_sets[[i]], statistic, power))
+					obs_scores <- c(obs_scores, csea_base(ms$obs_lfc, entity_sets[[j]], statistic, power))
+					shuffled_scores <- c(shuffled_scores, csea_base(ms$shuffled_lfc, entity_sets[[j]], statistic, power))
 				} else {
-					obs_scores <- c(obs_scores, csea_base(ms$obs_lfc, entity_sets[[i]], statistic, power))
-					shuffled_set <- sample(1:length(ms$obs_lfc), length(entity_sets[[i]]), replace=F)
+					obs_scores <- c(obs_scores, csea_base(ms$obs_lfc, entity_sets[[j]], statistic, power))
+					shuffled_set <- sample(1:length(ms$obs_lfc), length(entity_sets[[j]]), replace=F)
 					shuffled_scores <- c(shuffled_scores, csea_base(ms$obs_lfc, shuffled_set, statistic, power))
 				}
 
@@ -102,8 +102,17 @@ csea_parallel <- function(object, entity_sets, perm_type, statistic, cores=detec
 			list(shuffled_scores=shuffled_scores, obs_scores=obs_scores)
 		}
 		res <- csea_lfcmodel_agg(output, names(entity_sets))
+	} else if(is.vector(object) & !is.list(object)) {
+		pbd <- build_txt_pb_opts(length(object))
+		if(perm_type!="entity") {
+			stop("If object is a vector perm_type must be entity")
+		}
+		res <- foreach(i=1:length(entity_sets), .options.snow=pbd$opts, .export=c("csea"),
+			       .combine=rbind) %dopar% {
+			csea(object, entity_sets[[i]], perm_type, statistic, power, iterations)
+		}
 	} else {
-		stop("object must be of class seainput or lfcmodel")
+		stop("object must be of class seainput, vector, or lfcmodel")
 	}
 
 	close(pbd$pb)

@@ -97,20 +97,26 @@ model_sample.lfcmodel <- function(m, sample_type="column") {
 	# Multinomial-Dirichlet Posterior Sample
 	p_sample <- rdirichlet_cpp(m$D+m$prior)
 
-	# CLR coefficitients
-	gm_means <- apply(p_sample, 2, gm_mean)
-	clr_sample <- log(t(t(p_sample)/gm_means))
+	# ALR coefficitients
+	alr_sample <- log(t(t(p_sample)/p_sample[nrow(p_sample),]))[1:(nrow(p_sample)-1),]
 
 	# Linear Model LFC
-	B <- ginv(t(m$X)%*%m$X)%*%t(m$X)%*%t(clr_sample)
+	B <- ginv(t(m$X)%*%m$X)%*%t(m$X)%*%t(alr_sample)
 	obs_lfc <- t(B)[,m$lfc_column]
+	obs_lfc <- c(obs_lfc, 0)
+	obs_lfc <- exp(obs_lfc)/sum(exp(obs_lfc))
+	obs_lfc <- log(obs_lfc/gm_mean(obs_lfc))
 
 	# Linear Model Shuffled Columns
 	if (sample_type=="column") {
 		X <- m$X
 		X[,m$lfc_column] <- sample(X[,m$lfc_column], replace=F)
-		B <- ginv(t(X)%*%X)%*%t(X)%*%t(clr_sample)
+		B <- ginv(t(X)%*%X)%*%t(X)%*%t(alr_sample)
 		shuffled_lfc <- t(B)[,m$lfc_column]
+		shuffled_lfc <- c(shuffled_lfc, 0)
+		shuffled_lfc <- exp(shuffled_lfc)/sum(exp(shuffled_lfc))
+		shuffled_lfc <- log(shuffled_lfc/gm_mean(shuffled_lfc))
+
 	} else if (sample_type=="entity") {
 		shuffled_lfc <- NULL
 	} else {
