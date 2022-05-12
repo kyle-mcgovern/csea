@@ -8,6 +8,27 @@ gsea_base <- function(scores, inds) {
 	return(gsea_score_C(hit_scores, inds, length(scores)) )
 }
 
+gsea_lfcmodel_agg <- function(output, set_names) {
+	res <- c()
+	p_values <- c()
+	for(i in 1:nrow(output$obs_scores)) {
+		same_sign <- sign(output$obs_scores[i,])==sign(output$shuffled_scores[i,])
+		obs_scores <- output$obs_scores[i,same_sign]
+		shuffled_scores <- output$shuffled_scores[i,same_sign]
+		p_value <- sum(abs(obs_scores) <= abs(shuffled_scores)) / length(obs_scores)
+		p_values <- c(p_values, p_value)
+	}
+	res <- cbind(res, p_values)
+	res <- cbind(res, apply(output$obs_scores, 1, mean))
+	res <- cbind(res, apply(output$obs_scores, 1, sd))
+	res <- cbind(res, apply(output$shuffled_scores, 1, mean)) # FIXME sign
+	res <- cbind(res, apply(output$shuffled_scores, 1, sd)) # FIXME sign
+	colnames(res) <- c("p_value", "mean_obs_score", "sd_obs_scores",
+			   "mean_shuffled_scores", "sd_shuffled_scores")
+	row.names(res) <- set_names
+	res
+}
+
 gsea <- function(object, entity_sets, iterations=2000, cores=detectCores()) {
 	cl <- makeCluster(cores)
 	registerDoSNOW(cl)
@@ -25,7 +46,7 @@ gsea <- function(object, entity_sets, iterations=2000, cores=detectCores()) {
 		}
 		list(shuffled_scores=shuffled_scores, obs_scores=obs_scores)
 	}
-	res <- csea_lfcmodel_agg(output, names(entity_sets))
+	res <- gsea_lfcmodel_agg(output, names(entity_sets))
 	close(pbd$pb)
 	stopCluster(cl)
 	gc()
