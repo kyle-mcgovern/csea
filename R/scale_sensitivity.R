@@ -12,37 +12,22 @@ ols_solution <- function(Y, X, lfc_column) {
 	t(ginv(t(X)%*%X)%*%t(X)%*%t(Y))[,lfc_column]
 }
 
-scale_sensitivity_base <- function(Y, X, ind, lfc_column, pseudo_count, epsilons, iterations=2000) {
-	# Loop over values of epsilon
-	Y <- Y + pseudo_count
-	
-	p_values <- c()
-	obs_scores <- c()
-	for(epsilon in epsilons) {
-		# Compute observed LFC gsea score
-		W <- calculate_W(Y, X, lfc_column, epsilon)
-		obs_lfc <- ols_solution(W, X, lfc_column)
-		obs_score <- gsea_base(obs_lfc, ind)
-		obs_scores <- c(obs_scores, obs_score)
-		# Compute permuted scores
-		shuffled_scores <- c()
-		s_X <- X
-		for(i in 1:iterations) {
-			s_X[,lfc_column] <- sample(s_X[,lfc_column], replace=F)
-			shuffled_lfc <- ols_solution(W, s_X, lfc_column)
-			shuffled_scores <- c(shuffled_scores, gsea_base(shuffled_lfc, ind))
-		}
-		# Compute p-value
-		shuffled_scores <- shuffled_scores[sign(shuffled_scores)==sign(obs_score)]
-		p_value <- sum(abs(obs_score) <= abs(shuffled_scores)) / length(shuffled_scores)
-		p_values <- c(p_values, p_value)
+gsea_base_inds <- function(scores, inds) {
+	sorted_obj <- sort(scores, decreasing=T, index.return=T)
+	scores <- sorted_obj$x
+	gsea_scores <- rep(0, length(inds))
+	for (i in 1:length(inds)) {
+		idx <- sort(which(sorted_obj$ix%in%(inds[[i]])))
+		hit_scores <- abs(scores[idx])/sum(abs(scores[idx]))
+		gsea_scores[i] <- gsea_score_C(hit_scores, idx, length(scores))
 	}
-	return(list(obs_scores=obs_scores, p_values=p_values))
+	gsea_scores
 }
 
-#scale_sensitivity_analysis
-scale_sensitivity_analysis <- function(Y, X, entity_sets, lfc_column, pseudo_count, epsilons, iterations=2000, cores=detectCores()) {
-	# Set up parallel processing
+
+scale_sensitivity_analysis <- function(Y, X, inds, lfc_column, pseudo_count, epsilons, iterations=2000, cores=detectCores()) {
+	Y <- Y + pseudo_count
+	
 	cl <- makeCluster(cores)
 	registerDoSNOW(cl)
 
@@ -52,18 +37,29 @@ scale_sensitivity_analysis <- function(Y, X, entity_sets, lfc_column, pseudo_cou
 		results
 	}
 
-	pbd <- build_txt_pb_opts(length(entity_sets))
-	res <- foreach(i=1:length(entity_sets), .options.snow=pbd$opts,
-		       .export=c("scale_sensitivity_base"), .combine=combn) %dopar% {
-		ss_res <- scale_sensitivity_base(Y, X, entity_sets[[i]], lfc_column, pseudo_count, epsilons, iterations)
-		ss_res
+	pbd <- build_txt_pb_opts(length(epsilons))
+	res <- foreach(j=1:length(epsilons), .options.snow=pbd$opts,
+		.export=c("gsea_base_inds"), .combine=combn) %dopar% {
+		epsilon <- epsilons[j]
+		# Calculate observed
+		W <- calculate_W(Y, X, lfc_column, epsilon)
+		obs_lfc <- ols_solution(W, X, lfc_column)
+		obs_scores <- gsea_base_inds(obs_lfc, inds)
+
+		gt <- rep(0, length(obs_scores))
+		total <- rep(0, length(obs_scores))
+		obs_sign <- sign(obs_scores)
+		s_X <- X
+		for(i in 1:iterations) {
+			s_X[,lfc_column] <- sample(s_X[,lfc_column], replace=F)
+			shuffled_lfc <- ols_solution(W, s_X, lfc_column)
+			shuffled_scores <- gsea_base_inds(shuffled_lfc, inds)
+			total <- total + as.numeric(sign(shuffled_scores)==obs_sign)
+			gt <- gt + as.numeric( (sign(shuffled_scores)==obs_sign) & (abs(obs_scores) <= abs(shuffled_scores)) )
+		}
+		p_values <- gt / total
+		list(obs_scores=obs_scores, p_values=p_values)
 	}
-	close(pbd$pb)
-	stopCluster(cl)
-	gc()
 	res
 }
 
-sst <- function(object) {
-	;
-}
