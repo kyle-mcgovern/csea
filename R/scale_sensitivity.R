@@ -59,6 +59,11 @@ draw_shuffled_col <- function(W, X, lfc_column) {
   ols_solution(W, X, lfc_column)
 }
 
+draw_perm_col <- function(W, X, X_shuf, lfc_column) {
+  X[,lfc_column] <- X_shuf
+  ols_solution(W, X, lfc_column)
+}
+
 scale_sensitivity_analysis <- function(Y, X, inds, lfc_column, pseudo_count, epsilons, iterations=2000, cores=detectCores(), cw=F) {
 	Y <- Y + pseudo_count
 	
@@ -96,20 +101,27 @@ scale_sensitivity_analysis <- function(Y, X, inds, lfc_column, pseudo_count, eps
 	res
 }
 
-gsea_parallel_matrix <- function(Y, X, inds, lfc_column, iterations=2000, cores=detectCores(), cw=F) {
+gsea_parallel_matrix <- function(S, X, inds, lfc_column, iterations=2000, permutation_matrix=NULL, cores=detectCores(), cw=F) {
 	cl <- makeCluster(cores)
 	registerDoSNOW(cl)
 
 	# Calculate observed
-	W <- calculate_W(Y, X, lfc_column, 0)
-	obs_lfc <- ols_solution(W, X, lfc_column)
+	obs_lfc <- ols_solution(S, X, lfc_column)
 	obs_scores <- gsea_base_inds(obs_lfc, inds, cw)
-
+	
+	if(!is.null(permutation_matrix)) {
+	  iterations <- ncol(permutation_matrix) 
+	}
+	
 	pbd <- build_txt_pb_opts(iterations)
 	res <- foreach(j=1:iterations, .options.snow=pbd$opts,
 	               .export=c("gsea_base_inds", "calculate_W",
 	                         "ols_solution", "draw_shuffled_col"), .combine=rbind) %dopar% {
-		shuffled_lfc <- draw_shuffled_col(W, X, lfc_column)
+	  if(is.null(permutation_matrix)) {
+	    shuffled_lfc <- draw_shuffled_col(S, X, lfc_column)
+	  } else {
+	    shuffled_lfc <- draw_perm_col(S, X, permutation_matrix[,j], lfc_column) 
+	  }
 		shuffled_scores <- gsea_base_inds(shuffled_lfc, inds, cw)
 		shuffled_scores
 	}
@@ -119,5 +131,10 @@ gsea_parallel_matrix <- function(Y, X, inds, lfc_column, iterations=2000, cores=
 	  shuff_filt <- res[,i][sign(res[,i])==sign(obs_scores[i])]
 	  p_values <- c(p_values, sum(abs(shuff_filt) >= abs(obs_scores[i]))/length(shuff_filt))
 	}
+
+	close(pbd$pb)
+	stopCluster(cl)
+	gc()
+
 	return(list(obs_scores=obs_scores, p_values=p_values))
 }

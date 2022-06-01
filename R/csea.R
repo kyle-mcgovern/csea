@@ -121,7 +121,7 @@ csea_parallel <- function(object, entity_sets, perm_type, statistic, cores=detec
 	res
 }
 
-csea_parallel_matrix <- function(Y, X, inds, lfc_column, statistic="ks", iterations=2000, cores=detectCores()) {
+csea_parallel_matrix <- function(S, X, inds, lfc_column, statistic="ks", iterations=2000, permutation_matrix=NULL, cores=detectCores()) {
   cl <- makeCluster(cores)
   registerDoSNOW(cl)
   
@@ -130,17 +130,24 @@ csea_parallel_matrix <- function(Y, X, inds, lfc_column, statistic="ks", iterati
     results$p_value <- c(results$p_value, r$p_value)
     results
   }
+
+  if(!is.null(permutation_matrix)) {
+    iterations <- ncol(permutation_matrix) 
+  }
   
   pbd <- build_txt_pb_opts(length(inds))
   res <- foreach(j=1:length(inds), .options.snow=pbd$opts, .export=c("csea_base", "calculate_W", "ols_solution", "draw_shuffled_col"), .combine=combn) %dopar% {
     # Calculate observed
-    W <- calculate_W(Y, X, lfc_column, 0)
-    obs_lfc <- ols_solution(W, X, lfc_column)
+    obs_lfc <- ols_solution(S, X, lfc_column)
     obs_score <- csea_base(obs_lfc, inds[[j]], statistic)
 
     gt <- 0
     for(i in 1:iterations) {
-      shuffled_lfc <- draw_shuffled_col(W, X, lfc_column)
+      if(is.null(permutation_matrix)) {
+        shuffled_lfc <- draw_shuffled_col(S, X, lfc_column)
+      } else {
+        shuffled_lfc <- draw_perm_col(S, X, permutation_matrix[,i], lfc_column) 
+      }
       shuffled_score <- csea_base(shuffled_lfc, inds[[j]], statistic)
       if(abs(shuffled_score)>=abs(obs_score)) {
         gt <- gt + 1
