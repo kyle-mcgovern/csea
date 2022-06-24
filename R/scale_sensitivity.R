@@ -16,18 +16,12 @@ clr_inv <- function(x) {
   exp(x)/sum(exp(x))
 }
 
-alr_wo_remove <- function(p, i) {
-  a <- log(p/p[i])
-  a
-}
-
 gsea_compositional_weighting <- function(scores, inds) {
-  alr_weights <- c()
-  p <- clr_inv(scores)
+  weights <- c()
   for(ind in inds) {
-    alr_weights <- c(alr_weights, mean(abs(alr_wo_remove(p, ind))))
+    weights <- c(weights, (length(inds)-1) * sum(abs(scores - scores[ind])))
   }
-  alr_weights/sum(alr_weights)
+  weights/sum(weights)
 }
 
 gsea_base_inds <- function(scores, inds, cw=F) {
